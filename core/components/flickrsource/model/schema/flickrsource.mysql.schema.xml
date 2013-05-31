@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ * FlickrSource
+ *
+ * Copyright 2013 by Mark Hamstra, for modmore <support@modmore.com>
+ *
+ * This file is part of FlickrSource, a MODX Media Source implementation of the Flickr API,
+ * developed by modmore and available from https://www.modmore.com/extras/flickrsource/
+ *
+ * Please see core/components/flickrsource/docs/license.txt file for license terms.
+-->
+<model package="flickrsource" baseClass="xPDOObject" platform="mysql" version="1.1">
+    <object class="FlickrSource" extends="modMediaSource" />
+</model>

@@ -20,6 +20,9 @@ $FlickrSource = $modx->getService('flickrsource','FlickrSource', $componentPath.
     'flickrsource.core_path' => $componentPath.'/core/components/flickrsource/',
 ));
 
+/* Extension Package */
+$modx->addExtensionPackage('flickrsource', $componentPath . '/core/components/flickrsource/model/');
+
 /* Namespace */
 if (!createObject('modNamespace',array(
     'name' => 'flickrsource',
@@ -40,6 +43,44 @@ if (!createObject('modSystemSetting', array(
 ), 'key', false)) {
     echo "Error creating flickrsource.core_path setting.\n";
 }
+
+if (!createObject('modSystemSetting', array(
+    'key' => 'flickrsource.assets_path',
+    'value' => $componentPath.'/assets/components/flickrsource/',
+    'xtype' => 'textfield',
+    'namespace' => 'flickrsource',
+    'area' => 'Paths',
+    'editedon' => time(),
+), 'key', false)) {
+    echo "Error creating flickrsource.assets_path setting.\n";
+}
+
+/* Fetch assets url */
+$url = 'http';
+if (isset($_SERVER['HTTPS']) && ($_SERVER['HTTPS'] == 'on')) {
+    $url .= 's';
+}
+$url .= '://'.$_SERVER["SERVER_NAME"];
+if ($_SERVER['SERVER_PORT'] != '80') {
+    $url .= ':'.$_SERVER['SERVER_PORT'];
+}
+$requestUri = $_SERVER['REQUEST_URI'];
+$bootstrapPos = strpos($requestUri, '_bootstrap/');
+$requestUri = rtrim(substr($requestUri, 0, $bootstrapPos), '/').'/';
+$assetsUrl = "{$url}{$requestUri}assets/components/flickrsource/";
+
+if (!createObject('modSystemSetting', array(
+    'key' => 'flickrsource.assets_url',
+    'value' => $assetsUrl,
+    'xtype' => 'textfield',
+    'namespace' => 'flickrsource',
+    'area' => 'Paths',
+    'editedon' => time(),
+), 'key', false)) {
+    echo "Error creating flickrsource.assets_url setting.\n";
+}
+
+
 
 $manager = $modx->getManager();
 

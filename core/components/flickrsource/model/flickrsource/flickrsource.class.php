@@ -1,19 +1,33 @@
 <?php
-
 require_once MODX_CORE_PATH . 'model/modx/sources/modmediasource.class.php';
 /**
  * FlickrSource
  *
- * Provides a Media Source Driver for MODX Revolution that lets users interact with
- * Flickr galleries and photos from within MODX.
+ * Copyright 2013 by Mark Hamstra, for modmore <support@modmore.com>
  *
- * @author Mark Hamstra @ modmore <mark@modmore.com>
+ * This file is part of FlickrSource, a MODX Media Source implementation of the Flickr API,
+ * developed by modmore and available from https://www.modmore.com/extras/flickrsource/
  *
- * @extends modMediaSource
- * @implements modMediaSourceInterface
+ * Please see core/components/flickrsource/docs/license.txt file for license terms.
+ *
+ * @package flickrsource
  */
 class FlickrSource extends modMediaSource implements modMediaSourceInterface {
     public $config = array();
+    public $endpoint = 'https://secure.flickr.com/';
+    public $path = 'services/rest/';
+
+    /**
+     * @var modRestClient $client
+     */
+    public $client;
+
+
+    public function __construct(xPDO &$xpdo) {
+        parent::__construct($xpdo);
+        $this->set('is_stream', false);
+        $this->xpdo->lexicon->load('flickrsource:default');
+    }
 
     /**
      * Initialize the source
@@ -25,6 +39,39 @@ class FlickrSource extends modMediaSource implements modMediaSourceInterface {
         return true;
     }
 
+    public function api ($name, array $params = array(), $method = 'GET', array $options = array()) {
+        if (!$this->getClient() || !$this->client->conn) {
+            $this->xpdo->log(xPDO::LOG_LEVEL_ERROR, "Could not load rest.modRestClient for FlickrSource media source (request $name).");
+            return false;
+        }
+
+        $params['api_key'] = $this->getProperty('api_key');
+        $params['method'] = 'flickr.' . $name;
+        $params['format'] = 'json';
+        $params['nojsoncallback'] = 1;
+
+        return $this->client->request($this->endpoint, $this->path, $method, $params, $options);
+    }
+
+    /**
+     * Gets a single property from {@see: self::getPropertyList}
+     *
+     * @param $key
+     * @param null $default
+     * @param bool $checkEmpty
+     *
+     * @return null
+     */
+    public function getProperty($key, $default = null, $checkEmpty = true) {
+        $properties = $this->getPropertyList();
+        if (isset($properties[$key])) {
+            if (($checkEmpty && !empty($properties[$key])) || !$checkEmpty) {
+                return $properties[$key];
+            }
+        }
+        return $default;
+    }
+
     /**
      * Return an array of containers at this current level in the container structure. Used for the tree
      * navigation on the files tree.
@@ -34,7 +81,70 @@ class FlickrSource extends modMediaSource implements modMediaSourceInterface {
      * @return array
      */
     public function getContainerList($path) {
-        // TODO: Implement getContainerList() method.
+        $pathSegments = explode('/', $path);
+
+        switch (true) {
+            case ($pathSegments[0] == 'photosets'):
+                if (!isset($pathSegments[1]) || empty($pathSegments[1])) {
+                    return $this->getPhotoSets($this->getProperty('user_id'));
+                }
+
+                if (!empty($pathSegments[1])) {
+                    return $this->getPhotosInPhotoSet($pathSegments[1]);
+                }
+
+                break;
+
+            case ($pathSegments[0] == 'galleries'):
+
+                break;
+
+            case ($pathSegments[0] == 'favorites'):
+                break;
+
+            default:
+                $root = array();
+
+                if ($this->getProperty('show_favorites', true, false)) {
+                    $root[] = array(
+                        'id' => 'favorites/',
+                        'text' => $this->xpdo->lexicon('flickrsource.favorites'),
+                        'cls' => 'flickr-favorites',
+                        'type' => 'dir',
+                        'leaf' => false,
+                        'path' => 'favorites/',
+                        'pathRelative' => 'favorites/',
+                        'menu' => array(),
+                    );
+                }
+                if ($this->getProperty('show_galleries', true, false)) {
+                    $root[] = array(
+                        'id' => 'galleries/',
+                        'text' => $this->xpdo->lexicon('flickrsource.galleries'),
+                        'cls' => 'flickr-galleries',
+                        'type' => 'dir',
+                        'leaf' => false,
+                        'path' => 'galleries/',
+                        'pathRelative' => 'galleries/',
+                        'menu' => array(),
+                    );
+                }
+                if ($this->getProperty('show_photosets', true, false)) {
+                    $root[] = array(
+                        'id' => 'photosets/',
+                        'text' => $this->xpdo->lexicon('flickrsource.photosets'),
+                        'cls' => 'gallery flickr-photosets',
+                        'type' => 'dir',
+                        'leaf' => false,
+                        'path' => 'photosets/',
+                        'pathRelative' => 'photosets/',
+                        'menu' => array(),
+                    );
+                }
+                return $root;
+        }
+
+        return array();
     }
 
     /**
@@ -205,7 +315,6 @@ class FlickrSource extends modMediaSource implements modMediaSourceInterface {
      * @return string
      */
     public function getTypeName() {
-        $this->xpdo->lexicon->load('flickrsource');
         return $this->xpdo->lexicon('flickrsource');
     }
 
@@ -214,7 +323,6 @@ class FlickrSource extends modMediaSource implements modMediaSourceInterface {
      * @return string
      */
     public function getTypeDescription() {
-        $this->xpdo->lexicon->load('flickrsource');
         return $this->xpdo->lexicon('flickrsource.description');
     }
 
@@ -224,6 +332,140 @@ class FlickrSource extends modMediaSource implements modMediaSourceInterface {
      * @return array
      */
     public function getDefaultProperties() {
-        // TODO: Implement getDefaultProperties() method.
+        return array(
+            'api_key' => array(
+                'name' => 'api_key',
+                'desc' => 'flickrsource.api_key.desc',
+                'type' => 'textfield',
+                'options' => '',
+                'value' => '',
+                'lexicon' => 'flickrsource:default',
+            ),
+            'api_secret' => array(
+                'name' => 'api_secret',
+                'desc' => 'flickrsource.api_secret.desc',
+                'type' => 'textfield',
+                'options' => '',
+                'value' => '',
+                'lexicon' => 'flickrsource:default',
+            ),
+            'user_id' => array(
+                'name' => 'user_id',
+                'desc' => 'flickrsource.user_id.desc',
+                'type' => 'textfield',
+                'options' => '',
+                'value' => '',
+                'lexicon' => 'flickrsource:default',
+            ),
+            'show_favorites' => array(
+                'name' => 'show_favorites',
+                'desc' => 'flickrsource.show_favorites.desc',
+                'type' => 'combo-boolean',
+                'options' => '',
+                'value' => true,
+                'lexicon' => 'flickrsource:default',
+            ),
+            'show_galleries' => array(
+                'name' => 'show_galleries',
+                'desc' => 'flickrsource.show_galleries.desc',
+                'type' => 'combo-boolean',
+                'options' => '',
+                'value' => true,
+                'lexicon' => 'flickrsource:default',
+            ),
+            'show_photosets' => array(
+                'name' => 'show_photosets',
+                'desc' => 'flickrsource.show_photosets.desc',
+                'type' => 'combo-boolean',
+                'options' => '',
+                'value' => true,
+                'lexicon' => 'flickrsource:default',
+            ),
+
+        );
+    }
+
+    private function getClient() {
+        if (!$this->client) {
+            $this->xpdo->loadClass('rest.modRestClient', '', false, true);
+            $this->client = new modRestClient($this->xpdo);
+            if ($this->client) {
+                $this->client->getConnection();
+                $this->client->setResponseType('json');
+            }
+        }
+        return $this->client;
+    }
+
+    private function getPhotoUrl($id, $secret, $farm, $server) {
+        return "http://farm{$farm}.staticflickr.com/{$server}/{$id}_{$secret}.jpg";
+    }
+
+    /**
+     * @param $userId
+     *
+     * @return array
+     */
+    public function getPhotoSets($userId) {
+        $response = $this->api('photosets.getList', array('user_id' => $userId));
+        $data = $response->fromJSON();
+
+        $sets = array();
+        if (is_array($data) && $data['stat'] == 'ok') {
+            foreach ($data['photosets']['photoset'] as $photoset) {
+                $sets[] = array(
+                    'id' => "photosets/{$photoset['id']}/",
+                    'text' => $photoset['title']['_content'],
+                    'qtip' => $photoset['description']['_content'],
+                    'cls' => 'gallery flickr-photosets',
+                    'type' => 'dir',
+                    'leaf' => false,
+                    'path' => "photosets/{$photoset['id']}/",
+                    'pathRelative' => "photosets/{$photoset['id']}/",
+                    'menu' => array(),
+                );
+            }
+        } else {
+            $this->xpdo->log(xPDO::LOG_LEVEL_ERROR, 'Invalid response from flickr.photosets.getList:' . $response->response);
+        }
+
+        return $sets;
+    }
+
+    /**
+     * @param $photoSet
+     *
+     * @return array
+     */
+    public function getPhotosInPhotoSet($photoSet) {
+        $response = $this->api('photosets.getPhotos', array('photoset_id' => $photoSet));
+        $data = $response->fromJSON();
+
+        $photos = array();
+        if (is_array($data) && $data['stat'] == 'ok') {
+            foreach ($data['photoset']['photo'] as $photo) {
+                $photoArray = array(
+                    'id' => "photosets/{$data['photoset']['id']}/{$photo['id']}",
+                    'text' => $photo['title'],
+                    'cls' => '',
+                    'type' => 'file',
+                    'leaf' => true,
+                    'qtip' => '<img src="' . $this->getPhotoUrl($photo['id'], $photo['secret'], $photo['farm'], $photo['server']) . '" alt="' . $photo['title'] . '" />',
+                    'page' => null, // a page in the manager
+                    //'perms' => $octalPerms,
+                    'path' => "photosets/{$data['photoset']['id']}/{$photo['id']}",
+                    'pathRelative' => "photosets/{$data['photoset']['id']}/{$photo['id']}",
+                    'directory' => "photosets/{$data['photoset']['id']}/",
+                    'url' => "photosets/{$data['photoset']['id']}/{$photo['id']}",
+                    'urlAbsolute' => "photosets/{$data['photoset']['id']}/{$photo['id']}",
+                    'file' => "photosets/{$data['photoset']['id']}/{$photo['id']}",
+                    'menu' => array(),
+                );
+
+                $photos[] = $photoArray;
+            }
+        }
+
+        return $photos;
     }
 }
